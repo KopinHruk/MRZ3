@@ -10,6 +10,15 @@ from tqdm import tqdm
 from modules.dataset import Dataset
 
 
+def sign(x):
+    x = np.array(x)
+    
+    x[x > 0] = 1
+    x[x < 0] = -1
+    
+    return x
+
+
 class HopfieldNetwork:
     """Hopfiled network implementation"""
 
@@ -34,12 +43,19 @@ class HopfieldNetwork:
 
         copied_train_data = np.copy(self.train_data)
         number_of_images = len(copied_train_data)
+        
+        self.prev_value1 = self.weights
 
         for curr_copied_sample in tqdm(copied_train_data,
                                        disable=not self.verbose,
                                        postfix=f'Training...'):
             temp1 = curr_copied_sample.reshape(-1, 1) @ np.linalg.pinv(curr_copied_sample.reshape(-1, 1))
-            self.weights += np.sign(temp1)
+            temp1 = np.sign(temp1)
+            
+            # modifying of sign
+            temp1[temp1 == 0] = self.prev_value1[temp1 == 0]
+            
+            self.weights += temp1
 
         # diagonal_values = np.diag(self.weights)  # extracts diagonal values from matrix
         # diagonal_weights = np.diag(diagonal_values)  # creates diagonal matrix from diagonal values for weights
@@ -65,32 +81,63 @@ class HopfieldNetwork:
                                        disable=not self.verbose,
                                        postfix=f'Predicting...'):
             curr_prediction = np.sign(self.weights.dot(curr_copied_sample))
+            curr_prediction = self.__forward__(initial_data=curr_copied_sample,
+                                                     num_iter=num_iter)
             predicted_data.append(curr_prediction)
 
-        return predicted_data
+        return predicted_data#, iteration
 
 
+    def __forward__(self, initial_data: np.ndarray, num_iter: int = 20) -> np.ndarray:
+        """
+        Performs forward pass for data. It can use either synchronous or asynchronous way.
+        During synchronous pass it calculates new matrix for all values at the same time.
+        During ssynchronous pass it calculates new matrix for randomly selected values one after another.
+        :param initial_data: data to pass threw network
+        :param threshold: threshold for sign function
+        :param num_iter: number of iterations threw network
+        :return: resulted data
+        """
 
-if __name__ == '__main__':
-    # data = [np.random.random((15, 15)).flatten() for i in range(1)]
-    image_paths = glob.glob(pathname='../../images_same/*.*', recursive=True)
-    image_size = (64, 64)
+        copied_initial_data = np.copy(initial_data)
+        self.prev_value = copied_initial_data
 
-    dataset = Dataset(list_of_paths=image_paths, image_size=image_size)
-    flatten_images = dataset.get_all_flatten_images() # dataset.get_all_flatten_images() #[dataset.get_all_flatten_images()[0]]
+        self.energy_list = list()
 
-    test_dataset = Dataset(list_of_paths=image_paths, image_size=image_size, add_noise=True)
-    test_images = [test_dataset.get_all_flatten_images()[1]]# test_dataset.get_all_flatten_images() #[test_dataset.get_all_flatten_images()[0]]
 
-    net = HopfieldNetwork(train_data=flatten_images)
+        curr_energy = self.__energy__(initial_data=copied_initial_data)
 
-    net.train()
-    pred = net.predict(test_images, 40, 50)
+        for iter_idx in range(num_iter):
+            copied_initial_data = np.sign(self.weights.dot(copied_initial_data))
+            
+            # modifying of sign
+            copied_initial_data[copied_initial_data == 0] = self.prev_value[copied_initial_data == 0]
 
-    fig, axs = plt.subplots(1, 3)
+            self.prev_value = copied_initial_data
+            
 
-    axs[0].imshow(np.array(test_images).reshape(64, 64))
-    axs[1].imshow(np.array(pred).reshape(64, 64))
-    axs[2].imshow(net.weights)
+            curr_energy_new = self.__energy__(initial_data=copied_initial_data)
 
-    plt.show()
+            if curr_energy_new == curr_energy:
+                return copied_initial_data
+
+            self.energy_list.append(curr_energy)
+
+            curr_energy = curr_energy_new
+
+        return copied_initial_data#, iter_idx
+
+    
+    def __energy__(self, initial_data: np.ndarray) -> float:
+        """
+        Calculates energy value for given data
+        :param initial_data: data on which energy calculates
+        :param threshold: threshold for energy function
+        :return: energy value
+        """
+
+        energy = - 0.5 * initial_data.dot(self.weights).dot(initial_data)
+        energy += np.sum(initial_data)
+
+        return energy
+    

@@ -59,13 +59,23 @@ class Dataset(BaseDataset):
 
         assert len(image.shape) == 2, f'Image needs to have one channel, current image shape: {image.shape}'
 
-        num_of_pixels_to_change = int(image.shape[0] * image.shape[1] * self.add_noise)
+        num_to_change = int(image.shape[0] * image.shape[1] * self.add_noise)
 
-        for i in range(num_of_pixels_to_change):
-            x_idx = np.random.randint(0, image.shape[0])
-            y_idx = np.random.randint(0, image.shape[1])
+        a = np.arange(0, image.shape[0])
+        b = np.arange(0, image.shape[1])   
 
-            image[x_idx][y_idx] = -1 if image[x_idx][y_idx] == 1 else 1
+        all_pixels = np.transpose([np.tile(a, len(b)), np.repeat(b, len(a))])
+
+        idx_pixels_to_change = np.random.choice(np.arange(len(all_pixels)), size=num_to_change, replace=False)
+        pixels_to_change = all_pixels[idx_pixels_to_change]
+
+        for pixel in pixels_to_change:
+            x = pixel[0]
+            y = pixel[1]
+
+            new_value = 1 if np.random.randint(0, 2) == 1 else -1
+            image[x, y] = new_value
+            #-1 if image[x][y] == 1 else 1
 
         return image
 
